@@ -1,31 +1,43 @@
 package network
 
 import (
+	"crypto"
 	"fmt"
+	"main/core"
 	"time"
+
+	"github.com/sirupsen/logrus"
 )
 
 type ServerOpts struct {
 	Transports []Transport
+	BlockTime  time.Duration
+	PrivateKey *crypto.PrivateKey
 }
 
 type Server struct {
 	ServerOpts
-	rpcCh  chan RPC
-	quitCh chan struct{}
+	blockTime   time.Duration
+	memPool     *TxPool
+	isValidator bool
+	rpcCh       chan RPC
+	quitCh      chan struct{}
 }
 
 func NewServer(opts ServerOpts) *Server {
 	return &Server{
-		ServerOpts: opts,
-		rpcCh:      make(chan RPC),
-		quitCh:     make(chan struct{}, 1),
+		ServerOpts:  opts,
+		blockTime:   opts.BlockTime,
+		memPool:     NewTxPool(),
+		isValidator: opts.PrivateKey != nil,
+		rpcCh:       make(chan RPC),
+		quitCh:      make(chan struct{}, 1),
 	}
 }
 
 func (s *Server) Start() {
 	s.initTransports()
-	ticker := time.NewTicker(5 * time.Second)
+	ticker := time.NewTicker(s.blockTime)
 
 free:
 	for {
@@ -35,9 +47,27 @@ free:
 		case <-s.quitCh:
 			break free
 		case <-ticker.C:
-			fmt.Println("do stuff every x seconds")
+			if s.isValidator {
+				s.createNewBlock()
+			}
 		}
 	}
+}
+
+func (s *Server) handleTransaction(tx *core.Transaction) error {
+	if err := tx.Verify(); err != nil {
+		return err
+	}
+
+	logrus.WithFields(logrus.Fields{
+		"hash": tx.Hash(core.TxHasher{}),
+	}).Info("Adding Tx to the mempool")
+	return s.memPool.Add(tx)
+}
+
+func (s *Server) createNewBlock() error {
+	fmt.Println("Creating new Block")
+	return nil
 }
 
 func (s *Server) initTransports() {
