@@ -9,6 +9,8 @@ import (
 	"github.com/sirupsen/logrus"
 )
 
+var defaultBlockTime = 5 * time.Second
+
 type ServerOpts struct {
 	Transports []Transport
 	BlockTime  time.Duration
@@ -25,6 +27,11 @@ type Server struct {
 }
 
 func NewServer(opts ServerOpts) *Server {
+
+	if opts.BlockTime == time.Duration(0) {
+		opts.BlockTime = defaultBlockTime
+	}
+
 	return &Server{
 		ServerOpts:  opts,
 		blockTime:   opts.BlockTime,
@@ -57,6 +64,15 @@ free:
 func (s *Server) handleTransaction(tx *core.Transaction) error {
 	if err := tx.Verify(); err != nil {
 		return err
+	}
+
+	hash := tx.Hash(core.TxHasher{})
+
+	if s.memPool.Has(hash) {
+		logrus.WithFields(logrus.Fields{
+			"hash": tx.Hash(core.TxHasher{}),
+		}).Info("transaction is already in mempool")
+		return nil
 	}
 
 	logrus.WithFields(logrus.Fields{

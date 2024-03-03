@@ -3,9 +3,7 @@ package core
 import (
 	"fmt"
 	"main/crypto"
-	"testing"
-
-	"github.com/stretchr/testify/assert"
+	"main/types"
 )
 
 type Transaction struct {
@@ -13,6 +11,32 @@ type Transaction struct {
 
 	From      crypto.PublicKey
 	Signature *crypto.Signature
+
+	//cached version of tx hash
+	hash types.Hash
+	// firstseen is the timestamp of when tx is first seen locally
+	fistSeen int64
+}
+
+func (tx *Transaction) Decode(dec Decoder[*Transaction]) error {
+	return dec.Decode(tx)
+}
+
+func (tx *Transaction) Encode(dec Encoder[*Transaction]) error {
+	return dec.Encode(tx)
+}
+
+func NewTransaction(data []byte) *Transaction {
+	return &Transaction{
+		Data: data,
+	}
+}
+
+func (tx *Transaction) Hash(hasher Hasher[*Transaction]) types.Hash {
+	if tx.hash.IsZero() {
+		tx.hash = hasher.Hash(tx)
+	}
+	return tx.hash
 }
 
 func (tx *Transaction) Sign(privKey crypto.PrivateKey) error {
@@ -39,13 +63,10 @@ func (tx *Transaction) Verify() error {
 	return nil
 }
 
-func randomTxWithSignature(t *testing.T) *Transaction {
-	privKey := crypto.GeneratePrivateKey()
-	tx := &Transaction{
-		Data: []byte("foo"),
-	}
+func (tx *Transaction) SetFirstSeen(t int64) {
+	tx.fistSeen = t
+}
 
-	assert.Nil(t, tx.Sign(privKey))
-	return tx
-
+func (tx *Transaction) FirstSeen() int64 {
+	return tx.fistSeen
 }
