@@ -1,6 +1,7 @@
 package core
 
 import (
+	"bytes"
 	"main/crypto"
 	"testing"
 
@@ -29,6 +30,15 @@ func TestVerifyTrnsaction(t *testing.T) {
 	tx.From = otherPrivateKey.PublicKey()
 
 	assert.NotNil(t, tx.Verify())
+}
+
+func TestTxEncodeDecode(t *testing.T) {
+	tx := randomTxWithSignature(t)
+	buf := &bytes.Buffer{}
+	assert.Nil(t, tx.Encode(NewGobTxEncoder(buf)))
+
+	txDecoded := new(Transaction)
+	assert.Nil(t, txDecoded.Decode(NewGobTxDecoder(buf)))
 }
 
 func randomTxWithSignature(t *testing.T) *Transaction {
