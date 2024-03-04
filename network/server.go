@@ -12,6 +12,7 @@ import (
 var defaultBlockTime = 5 * time.Second
 
 type ServerOpts struct {
+	RPCHandler RPCHandler
 	Transports []Transport
 	BlockTime  time.Duration
 	PrivateKey *crypto.PrivateKey
@@ -32,14 +33,21 @@ func NewServer(opts ServerOpts) *Server {
 		opts.BlockTime = defaultBlockTime
 	}
 
-	return &Server{
-		ServerOpts:  opts,
+	s := &Server{
 		blockTime:   opts.BlockTime,
 		memPool:     NewTxPool(),
 		isValidator: opts.PrivateKey != nil,
 		rpcCh:       make(chan RPC),
 		quitCh:      make(chan struct{}, 1),
 	}
+
+	if opts.RPCHandler == nil {
+		opts.RPCHandler = NewDefaultRPCHandler(s)
+	}
+
+	s.ServerOpts = opts
+
+	return s
 }
 
 func (s *Server) Start() {
@@ -50,7 +58,9 @@ free:
 	for {
 		select {
 		case rpc := <-s.rpcCh:
-			fmt.Printf("%+v\n", rpc)
+			if err := s.RPCHandler.HandleRPC(rpc); err != nil {
+				logrus.Error(err)
+			}
 		case <-s.quitCh:
 			break free
 		case <-ticker.C:
@@ -61,22 +71,26 @@ free:
 	}
 }
 
-func (s *Server) handleTransaction(tx *core.Transaction) error {
-	if err := tx.Verify(); err != nil {
-		return err
-	}
+func (s *Server) ProcessTransaction(from NetAddr, tx *core.Transaction) error {
 
 	hash := tx.Hash(core.TxHasher{})
 
 	if s.memPool.Has(hash) {
 		logrus.WithFields(logrus.Fields{
-			"hash": tx.Hash(core.TxHasher{}),
+			"hash": hash,
 		}).Info("transaction is already in mempool")
 		return nil
 	}
 
+	if err := tx.Verify(); err != nil {
+		return err
+	}
+
+	tx.SetFirstSeen(time.Now().UnixNano())
+
 	logrus.WithFields(logrus.Fields{
-		"hash": tx.Hash(core.TxHasher{}),
+		"hash":          hash,
+		"mempool level": s.memPool.Len(),
 	}).Info("Adding Tx to the mempool")
 	return s.memPool.Add(tx)
 }

@@ -1,6 +1,7 @@
 package network
 
 import (
+	"encoding/gob"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -23,10 +24,12 @@ func TestSendMessage(t *testing.T) {
 	tra.Connect(trb)
 	trb.Connect(tra)
 
-	msg := []byte("Hello World")
-	assert.Nil(t, tra.SendMessage(trb.Addr(), msg))
+	msg := NewMessage(MessageTypeTx, []byte("Hello World"))
+	assert.Nil(t, tra.SendMessage(trb.Addr(), msg.Bytes()))
 
 	rpc := <-trb.(*LocalTransport).consumeCh
-	assert.Equal(t, rpc.Payload, msg)
+	message := new(Message)
+	assert.Nil(t, gob.NewDecoder(rpc.Payload).Decode(message))
+	assert.Equal(t, message.Data, msg.Data)
 	assert.Equal(t, string(tra.Addr()), rpc.From)
 }
